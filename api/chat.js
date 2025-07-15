@@ -1,15 +1,24 @@
-const express = require('express');
 const { OpenAI } = require('openai');
-const cors = require('cors');
-const app = express();
-app.use(express.json());
-app.use(cors());
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // Use environment variable
-const assistantId = process.env.ASSISTANT_ID;
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-app.post('/chat', async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method Not Allowed' });
+    return;
+  }
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const assistantId = process.env.ASSISTANT_ID;
   const { message, threadId } = req.body;
+
   try {
     let thread;
     if (!threadId) {
@@ -48,7 +57,4 @@ app.post('/chat', async (req, res) => {
     console.error('Error in /chat endpoint:', error);
     res.status(500).json({ error: error.message });
   }
-});
-
-const port = process.env.PORT || 3001;
-app.listen(port, () => console.log(`Server running on port ${port}`));
+};
