@@ -40,12 +40,60 @@ module.exports = async (req, res) => {
     console.log('Run created:', run.id);
 
     console.log('Retrieving initial run status for thread:', thread.id, 'run:', run.id);
-    let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+    console.log('Debug - thread object:', thread);
+    console.log('Debug - run object:', run);
+    
+    // Validate IDs before making the API call
+    if (!thread.id) {
+      throw new Error('Thread ID is undefined');
+    }
+    if (!run.id) {
+      throw new Error('Run ID is undefined');
+    }
+    
+    console.log('About to call retrieve with:', 'threadId:', thread.id, 'runId:', run.id);
+    
+    // Extract IDs as strings to ensure no reference issues
+    const threadIdStr = String(thread.id);
+    const runIdStr = String(run.id);
+    
+    console.log('String versions:', 'threadId:', threadIdStr, 'runId:', runIdStr);
+    
+    // Use raw HTTP approach to bypass SDK parameter issue
+    const response = await fetch(`https://api.openai.com/v1/threads/${threadIdStr}/runs/${runIdStr}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+        'OpenAI-Beta': 'assistants=v2'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    let runStatus = await response.json();
     while (runStatus.status !== 'completed') {
       console.log('Run status:', runStatus.status);
       await new Promise(resolve => setTimeout(resolve, 1000));
-      console.log('Polling run status for thread:', thread.id, 'run:', run.id);
-      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      console.log('Polling run status for thread:', threadIdStr, 'run:', runIdStr);
+      
+      // Use raw HTTP for polling as well
+      const pollResponse = await fetch(`https://api.openai.com/v1/threads/${threadIdStr}/runs/${runIdStr}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+          'OpenAI-Beta': 'assistants=v2'
+        }
+      });
+      
+      if (!pollResponse.ok) {
+        throw new Error(`HTTP error during polling! status: ${pollResponse.status}`);
+      }
+      
+      runStatus = await pollResponse.json();
     }
 
     const messages = await openai.beta.threads.messages.list(thread.id);
