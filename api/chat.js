@@ -119,8 +119,53 @@ module.exports = async (req, res) => {
       
       let runStatus;
       try {
-        console.log('Making retrieve call with threadId:', thread.id, 'runId:', run.id);
-        runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+        // Store in separate variables and ensure they're clean strings
+        const currentThreadId = String(thread.id).trim();
+        const currentRunId = String(run.id).trim();
+        console.log('Making retrieve call with threadId:', currentThreadId, 'runId:', currentRunId);
+        console.log('About to call: openai.beta.threads.runs.retrieve(', currentThreadId, ',', currentRunId, ')');
+        // Debug the OpenAI client structure
+        console.log('OpenAI client check:', {
+          hasOpenAI: !!openai,
+          hasBeta: !!openai?.beta,
+          hasThreads: !!openai?.beta?.threads,
+          hasRuns: !!openai?.beta?.threads?.runs,
+          hasRetrieve: !!openai?.beta?.threads?.runs?.retrieve
+        });
+        
+        console.log('Cleaned ID lengths - threadId:', currentThreadId.length, 'runId:', currentRunId.length);
+        console.log('ID character codes - threadId first 5 chars:', currentThreadId.slice(0,5).split('').map(c => c.charCodeAt(0)));
+        console.log('ID character codes - runId first 5 chars:', currentRunId.slice(0,5).split('').map(c => c.charCodeAt(0)));
+        
+        // Test that the OpenAI client is working by retrieving the thread first
+        console.log('Testing OpenAI client by retrieving thread...');
+        try {
+          const testThread = await openai.beta.threads.retrieve(currentThreadId);
+          console.log('Thread retrieval successful, thread exists:', !!testThread);
+        } catch (testError) {
+          console.error('Failed to retrieve thread:', testError.message);
+          throw new Error(`Cannot retrieve thread ${currentThreadId}: ${testError.message}`);
+        }
+        
+        // Try calling the method with explicit parameter names
+        console.log('Calling retrieve with explicit parameters:', { threadId: currentThreadId, runId: currentRunId });
+        
+        // Try the standard approach first
+        try {
+          runStatus = await openai.beta.threads.runs.retrieve(currentThreadId, currentRunId);
+          console.log('Retrieve call successful!');
+        } catch (retrieveSpecificError) {
+          console.error('Retrieve specific error:', retrieveSpecificError.message);
+          console.log('Trying fallback approach using runs.list...');
+          // Fallback: get the run using list method
+          const runsList = await openai.beta.threads.runs.list(currentThreadId);
+          const targetRun = runsList.data.find(r => r.id === currentRunId);
+          if (!targetRun) {
+            throw new Error(`Run ${currentRunId} not found in thread ${currentThreadId}`);
+          }
+          runStatus = targetRun;
+          console.log('Fallback approach successful, found run status:', runStatus.status);
+        }
       } catch (retrieveError) {
         console.error('Error in initial retrieve:', retrieveError);
         throw retrieveError;
@@ -146,8 +191,13 @@ module.exports = async (req, res) => {
         }
         
         try {
-          console.log('Making polling retrieve call with threadId:', thread.id, 'runId:', run.id);
-          runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+          // Store in separate variables and ensure they're clean strings
+          const currentThreadId = String(thread.id).trim();
+          const currentRunId = String(run.id).trim();
+          console.log('Making polling retrieve call with threadId:', currentThreadId, 'runId:', currentRunId);
+          console.log('About to call polling: openai.beta.threads.runs.retrieve(', currentThreadId, ',', currentRunId, ')');
+          console.log('Polling - calling retrieve with explicit parameters:', { threadId: currentThreadId, runId: currentRunId });
+          runStatus = await openai.beta.threads.runs.retrieve(currentThreadId, currentRunId);
         } catch (pollError) {
           console.error('Error in polling retrieve:', pollError);
           throw pollError;
