@@ -61,12 +61,12 @@ module.exports = async (req, res) => {
       console.log('Run created:', run.id);
 
       console.log('Retrieving initial run status for thread:', thread.id, 'run:', run.id);
-      let runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+      let runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       while (runStatus.status !== 'completed') {
         console.log('Run status:', runStatus.status);
         await new Promise(resolve => setTimeout(resolve, 1000));
         console.log('Polling run status for thread:', thread.id, 'run:', run.id);
-        runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+        runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       }
 
       const messages = await openai.beta.threads.messages.list(thread.id);
