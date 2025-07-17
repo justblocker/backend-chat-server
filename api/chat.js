@@ -10,6 +10,9 @@ module.exports = async (req, res) => {
     return;
   }
 
+  console.log('API Key:', process.env.OPENAI_API_KEY ? 'set' : 'unset');
+  console.log('Assistant ID:', process.env.ASSISTANT_ID ? 'set' : 'unset');
+
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const assistantId = process.env.ASSISTANT_ID;
 
@@ -43,34 +46,72 @@ module.exports = async (req, res) => {
     try {
       let thread;
       if (!threadId || threadId === 'undefined') {
-        thread = await openai.beta.threads.create();
-        console.log('New thread created:', thread.id);
+        try {
+          thread = await openai.beta.threads.create();
+          console.log('New thread created:', thread.id);
+          console.log('Thread object:', JSON.stringify(thread));
+        } catch (createError) {
+          console.error('Error creating thread:', createError);
+          throw createError;
+        }
       } else {
         thread = { id: threadId };
         console.log('Using existing thread:', thread.id);
       }
 
-      await openai.beta.threads.messages.create(thread.id, {
-        role: 'user',
-        content: message
-      });
+      if (!thread.id) {
+        throw new Error('Thread ID is undefined after creation');
+      }
 
-      const run = await openai.beta.threads.runs.create(thread.id, {
-        assistant_id: assistantId
-      });
-      console.log('Run created:', run.id);
+      try {
+        await openai.beta.threads.messages.create(thread.id, {
+          role: 'user',
+          content: message
+        });
+      } catch (msgError) {
+        console.error('Error creating message:', msgError);
+        throw msgError;
+      }
+
+      let run;
+      try {
+        run = await openai.beta.threads.runs.create(thread.id, {
+          assistant_id: assistantId
+        });
+        console.log('Run created:', run.id);
+      } catch (runError) {
+        console.error('Error creating run:', runError);
+        throw runError;
+      }
 
       console.log('Retrieving initial run status for thread:', thread.id, 'run:', run.id);
-      let runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+      let runStatus;
+      try {
+        runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+      } catch (retrieveError) {
+        console.error('Error in initial retrieve:', retrieveError);
+        throw retrieveError;
+      }
       while (runStatus.status !== 'completed') {
         console.log('Run status:', runStatus.status);
         await new Promise(resolve => setTimeout(resolve, 1000));
         console.log('Polling run status for thread:', thread.id, 'run:', run.id);
-        runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+        try {
+          runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+        } catch (pollError) {
+          console.error('Error in polling retrieve:', pollError);
+          throw pollError;
+        }
       }
 
-      const messages = await openai.beta.threads.messages.list(thread.id);
-      console.log('Full messages data:', messages.data.map(m => ({ id: m.id, role: m.role, content: m.content[0]?.text?.value || 'Non-text content' }))); // Enhanced logging for debug
+      let messages;
+      try {
+        messages = await openai.beta.threads.messages.list(thread.id);
+        console.log('Full messages data:', messages.data.map(m => ({ id: m.id, role: m.role, content: m.content[0]?.text?.value || 'Non-text content' })));
+      } catch (listError) {
+        console.error('Error listing messages:', listError);
+        throw listError;
+      }
       const latestAssistantMessage = messages.data.find(msg => msg.role === 'assistant');
       const latestMessage = latestAssistantMessage ? latestAssistantMessage.content[0].text.value : 'No response from assistant';
 
