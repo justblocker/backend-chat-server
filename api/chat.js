@@ -13,6 +13,16 @@ module.exports = async (req, res) => {
   console.log('API Key:', process.env.OPENAI_API_KEY ? 'set' : 'unset');
   console.log('Assistant ID:', process.env.ASSISTANT_ID ? 'set' : 'unset');
 
+  if (!process.env.OPENAI_API_KEY) {
+    res.status(500).json({ error: 'OPENAI_API_KEY environment variable is not set' });
+    return;
+  }
+
+  if (!process.env.ASSISTANT_ID) {
+    res.status(500).json({ error: 'ASSISTANT_ID environment variable is not set' });
+    return;
+  }
+
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const assistantId = process.env.ASSISTANT_ID;
 
@@ -87,21 +97,29 @@ module.exports = async (req, res) => {
       console.log('Retrieving initial run status for thread:', thread.id, 'run:', run.id);
       let runStatus;
       try {
-        runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+        runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       } catch (retrieveError) {
         console.error('Error in initial retrieve:', retrieveError);
         throw retrieveError;
       }
-      while (runStatus.status !== 'completed') {
+      while (runStatus.status !== 'completed' && runStatus.status !== 'failed' && runStatus.status !== 'cancelled') {
         console.log('Run status:', runStatus.status);
         await new Promise(resolve => setTimeout(resolve, 1000));
         console.log('Polling run status for thread:', thread.id, 'run:', run.id);
         try {
-          runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
+          runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
         } catch (pollError) {
           console.error('Error in polling retrieve:', pollError);
           throw pollError;
         }
+      }
+
+      if (runStatus.status === 'failed') {
+        throw new Error(`Run failed: ${runStatus.last_error?.message || 'Unknown error'}`);
+      }
+      
+      if (runStatus.status === 'cancelled') {
+        throw new Error('Run was cancelled');
       }
 
       let messages;
