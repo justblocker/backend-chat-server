@@ -56,7 +56,7 @@ module.exports = async (req, res) => {
     }
     try {
       let thread;
-      if (!threadId || threadId === 'undefined') {
+      if (!threadId || threadId === 'undefined' || threadId === 'null') {
         console.log('Creating new thread because threadId is:', JSON.stringify(threadId));
         try {
           thread = await openai.beta.threads.create();
@@ -108,6 +108,15 @@ module.exports = async (req, res) => {
         throw new Error(`Missing IDs - thread.id: ${thread.id}, run.id: ${run.id}`);
       }
       
+      // Validate ID formats
+      if (typeof thread.id !== 'string' || !thread.id.startsWith('thread_')) {
+        throw new Error(`Invalid thread ID format: ${thread.id} (expected string starting with 'thread_')`);
+      }
+      
+      if (typeof run.id !== 'string' || !run.id.startsWith('run_')) {
+        throw new Error(`Invalid run ID format: ${run.id} (expected string starting with 'run_')`);
+      }
+      
       let runStatus;
       try {
         console.log('Making retrieve call with threadId:', thread.id, 'runId:', run.id);
@@ -125,6 +134,15 @@ module.exports = async (req, res) => {
         
         if (!thread.id || !run.id) {
           throw new Error(`Missing IDs in polling - thread.id: ${thread.id}, run.id: ${run.id}`);
+        }
+        
+        // Validate ID formats in polling
+        if (typeof thread.id !== 'string' || !thread.id.startsWith('thread_')) {
+          throw new Error(`Invalid thread ID format in polling: ${thread.id} (expected string starting with 'thread_')`);
+        }
+        
+        if (typeof run.id !== 'string' || !run.id.startsWith('run_')) {
+          throw new Error(`Invalid run ID format in polling: ${run.id} (expected string starting with 'run_')`);
         }
         
         try {
