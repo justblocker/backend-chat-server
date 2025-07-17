@@ -49,6 +49,7 @@ module.exports = async (req, res) => {
 
   if (req.method === 'POST') {
     const { message, threadId } = req.body;
+    console.log('POST request received - message:', message ? 'present' : 'missing', 'threadId:', JSON.stringify(threadId), 'type:', typeof threadId);
     if (!message) {
       res.status(400).json({ error: 'Message is required' });
       return;
@@ -56,6 +57,7 @@ module.exports = async (req, res) => {
     try {
       let thread;
       if (!threadId || threadId === 'undefined') {
+        console.log('Creating new thread because threadId is:', JSON.stringify(threadId));
         try {
           thread = await openai.beta.threads.create();
           console.log('New thread created:', thread.id);
@@ -65,14 +67,16 @@ module.exports = async (req, res) => {
           throw createError;
         }
       } else {
+        console.log('Using existing threadId:', JSON.stringify(threadId));
         thread = { id: threadId };
         console.log('Using existing thread:', thread.id);
       }
 
-      if (!thread.id) {
+      if (!thread || !thread.id) {
         throw new Error('Thread ID is undefined after creation');
       }
 
+      console.log('About to create message with thread ID:', thread.id);
       try {
         await openai.beta.threads.messages.create(thread.id, {
           role: 'user',
@@ -84,19 +88,29 @@ module.exports = async (req, res) => {
       }
 
       let run;
+      console.log('About to create run with thread ID:', thread.id);
       try {
         run = await openai.beta.threads.runs.create(thread.id, {
           assistant_id: assistantId
         });
         console.log('Run created:', run.id);
+        console.log('Full run object:', JSON.stringify(run, null, 2));
       } catch (runError) {
         console.error('Error creating run:', runError);
         throw runError;
       }
 
       console.log('Retrieving initial run status for thread:', thread.id, 'run:', run.id);
+      console.log('Types - thread.id type:', typeof thread.id, 'run.id type:', typeof run.id);
+      console.log('Values - thread.id:', JSON.stringify(thread.id), 'run.id:', JSON.stringify(run.id));
+      
+      if (!thread.id || !run.id) {
+        throw new Error(`Missing IDs - thread.id: ${thread.id}, run.id: ${run.id}`);
+      }
+      
       let runStatus;
       try {
+        console.log('Making retrieve call with threadId:', thread.id, 'runId:', run.id);
         runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
       } catch (retrieveError) {
         console.error('Error in initial retrieve:', retrieveError);
@@ -106,7 +120,15 @@ module.exports = async (req, res) => {
         console.log('Run status:', runStatus.status);
         await new Promise(resolve => setTimeout(resolve, 1000));
         console.log('Polling run status for thread:', thread.id, 'run:', run.id);
+        console.log('Polling - Types - thread.id type:', typeof thread.id, 'run.id type:', typeof run.id);
+        console.log('Polling - Values - thread.id:', JSON.stringify(thread.id), 'run.id:', JSON.stringify(run.id));
+        
+        if (!thread.id || !run.id) {
+          throw new Error(`Missing IDs in polling - thread.id: ${thread.id}, run.id: ${run.id}`);
+        }
+        
         try {
+          console.log('Making polling retrieve call with threadId:', thread.id, 'runId:', run.id);
           runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
         } catch (pollError) {
           console.error('Error in polling retrieve:', pollError);
