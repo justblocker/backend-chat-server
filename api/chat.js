@@ -45,17 +45,17 @@ module.exports = async (req, res) => {
         thread = { id: threadId };
         console.log('Using existing thread:', thread.id);
       }
-
+  
       await openai.beta.threads.messages.create(thread.id, {
         role: 'user',
         content: message
       });
-
+  
       const run = await openai.beta.threads.runs.create(thread.id, {
         assistant_id: assistantId
       });
       console.log('Run created:', run.id);
-
+  
       console.log('Retrieving initial run status for thread:', thread.id, 'run:', run.id);
       let runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
       while (runStatus.status !== 'completed') {
@@ -64,11 +64,12 @@ module.exports = async (req, res) => {
         console.log('Polling run status for thread:', thread.id, 'run:', run.id);
         runStatus = await openai.beta.threads.runs.retrieve(run.id, { threadId: thread.id });
       }
-
+  
       const messages = await openai.beta.threads.messages.list(thread.id);
-      console.log('Messages retrieved:', messages.data);
-      const latestMessage = messages.data[0].content[0].text.value;
-
+      console.log('Full messages data:', messages.data.map(m => ({ id: m.id, role: m.role, content: m.content[0]?.text?.value || 'Non-text content' }))); // Enhanced logging for debug
+      const latestAssistantMessage = messages.data.find(msg => msg.role === 'assistant');
+      const latestMessage = latestAssistantMessage ? latestAssistantMessage.content[0].text.value : 'No response from assistant';
+  
       res.json({ response: latestMessage, threadId: thread.id });
     } catch (error) {
       console.error('Error in /chat endpoint:', error);
