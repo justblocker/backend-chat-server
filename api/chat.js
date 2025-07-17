@@ -28,13 +28,17 @@ module.exports = async (req, res) => {
 
   if (req.method === 'GET') {
     const { threadId } = req.query;
-    if (!threadId || threadId === 'undefined') {
+    console.log('GET request for history - threadId:', JSON.stringify(threadId), 'type:', typeof threadId);
+    
+    if (!threadId || threadId === 'undefined' || threadId === 'null') {
       res.status(400).json({ error: 'Valid threadId is required' });
       return;
     }
 
     try {
+      console.log('Fetching messages for thread:', threadId);
       const messages = await openai.beta.threads.messages.list(threadId);
+      console.log('Messages fetched successfully, count:', messages.data.length);
       const history = messages.data.map(msg => ({
         role: msg.role,
         content: msg.content[0].text.value
@@ -68,7 +72,23 @@ module.exports = async (req, res) => {
         }
       } else {
         console.log('Using existing threadId:', JSON.stringify(threadId));
-        thread = { id: threadId };
+        
+        // Validate the existing threadId format
+        if (typeof threadId !== 'string' || !threadId.startsWith('thread_')) {
+          throw new Error(`Invalid existing thread ID format: ${threadId} (expected string starting with 'thread_')`);
+        }
+        
+        // Test that the thread actually exists before proceeding
+        console.log('Validating existing thread exists...');
+        try {
+          const existingThread = await openai.beta.threads.retrieve(threadId);
+          console.log('Existing thread validation successful:', !!existingThread);
+          thread = { id: threadId };
+        } catch (threadValidationError) {
+          console.error('Failed to validate existing thread:', threadValidationError.message);
+          throw new Error(`Cannot access existing thread ${threadId}: ${threadValidationError.message}`);
+        }
+        
         console.log('Using existing thread:', thread.id);
       }
 
@@ -150,22 +170,15 @@ module.exports = async (req, res) => {
         // Try calling the method with explicit parameter names
         console.log('Calling retrieve with explicit parameters:', { threadId: currentThreadId, runId: currentRunId });
         
-        // Try the standard approach first
-        try {
-          runStatus = await openai.beta.threads.runs.retrieve(currentThreadId, currentRunId);
-          console.log('Retrieve call successful!');
-        } catch (retrieveSpecificError) {
-          console.error('Retrieve specific error:', retrieveSpecificError.message);
-          console.log('Trying fallback approach using runs.list...');
-          // Fallback: get the run using list method
-          const runsList = await openai.beta.threads.runs.list(currentThreadId);
-          const targetRun = runsList.data.find(r => r.id === currentRunId);
-          if (!targetRun) {
-            throw new Error(`Run ${currentRunId} not found in thread ${currentThreadId}`);
-          }
-          runStatus = targetRun;
-          console.log('Fallback approach successful, found run status:', runStatus.status);
+        // Use runs.list as primary method since retrieve has parameter issues
+        console.log('Using runs.list as primary method...');
+        const runsList = await openai.beta.threads.runs.list(currentThreadId);
+        const targetRun = runsList.data.find(r => r.id === currentRunId);
+        if (!targetRun) {
+          throw new Error(`Run ${currentRunId} not found in thread ${currentThreadId}`);
         }
+        runStatus = targetRun;
+        console.log('Primary runs.list approach successful, found run status:', runStatus.status);
       } catch (retrieveError) {
         console.error('Error in initial retrieve:', retrieveError);
         throw retrieveError;
@@ -197,7 +210,16 @@ module.exports = async (req, res) => {
           console.log('Making polling retrieve call with threadId:', currentThreadId, 'runId:', currentRunId);
           console.log('About to call polling: openai.beta.threads.runs.retrieve(', currentThreadId, ',', currentRunId, ')');
           console.log('Polling - calling retrieve with explicit parameters:', { threadId: currentThreadId, runId: currentRunId });
-          runStatus = await openai.beta.threads.runs.retrieve(currentThreadId, currentRunId);
+          
+          // Use runs.list as primary method for polling too
+          console.log('Using runs.list as primary method for polling...');
+          const runsList = await openai.beta.threads.runs.list(currentThreadId);
+          const targetRun = runsList.data.find(r => r.id === currentRunId);
+          if (!targetRun) {
+            throw new Error(`Run ${currentRunId} not found in thread ${currentThreadId} during polling`);
+          }
+          runStatus = targetRun;
+          console.log('Polling runs.list approach successful, found run status:', runStatus.status);
         } catch (pollError) {
           console.error('Error in polling retrieve:', pollError);
           throw pollError;
